@@ -1,36 +1,41 @@
-CC      ?= gcc
-CFLAGS  ?= -Wall -Wextra -Werror -std=c99 -O2
-LDFLAGS ?=
+CC=gcc
 
-SRC_DIR   := src
-INC_DIR   := include
-TEST_DIR  := tests
+CSTD=-std=c11
+WARN=-Wall -Wextra -Wpedantic
+DBG=-g -fno-omit-frame-pointer
+SAN=-fsanitize=address,undefined
 
-SRCS      := $(wildcard $(SRC_DIR)/*.c)
-OBJS      := $(patsubst $(SRC_DIR)/%.c,$(SRC_DIR)/%.o,$(SRCS))
+INC=-Iinclude -Isrc
 
-TEST_SRC  := $(TEST_DIR)/test.c
-TEST_OBJ  := $(TEST_SRC:.c=.o)
+SRC=src/naive.c \
+	src/tarjan.c \
+	src/gabow.c \
+	src/reachability.c
 
-TARGET    := dmst
-TEST_EXE  := dmst_test
+COMMON=$(CSTD) $(WARN) $(DBG)
 
-.PHONY: all clean test
+.PHONY: all release debug test clean
 
-all: $(TARGET)
+all: release
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -I$(INC_DIR) -o $@ $(OBJS) $(LDFLAGS)
+release:
+	$(CC) $(CSTD) -O2 -DNDEBUG \
+	$(WARN) $(INC) \
+	$(SRC) src/main.c \
+	-o dmst
 
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(INC_DIR)/dmst.h
-	$(CC) $(CFLAGS) -I$(INC_DIR) -c $< -o $@
+debug:
+	$(CC) $(COMMON) $(INC) \
+	$(SRC) src/main.c \
+	-o dmst
 
-test: $(TARGET) $(TEST_OBJ) $(OBJS)
-	$(CC) $(CFLAGS) -I$(INC_DIR) -o $(TEST_EXE) $(TEST_OBJ) $(OBJS) $(LDFLAGS)
-	./$(TEST_EXE)
+tests_run:
+	$(CC) $(COMMON) $(SAN) \
+	$(INC) $(SRC) tests/test.c \
+	$(SAN) -o tests_run
 
-$(TEST_OBJ): $(TEST_SRC) $(INC_DIR)/dmst.h
-	$(CC) $(CFLAGS) -I$(INC_DIR) -c $< -o $@
+test: tests_run
+	./tests_run
 
 clean:
-	rm -f $(SRC_DIR)/*.o $(TEST_DIR)/*.o $(TARGET) $(TEST_EXE)
+	rm -f dmst tests_run
