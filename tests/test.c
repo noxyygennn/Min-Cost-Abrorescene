@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Simple macro to check a condition and abort the test suite on failure. */
+/* Простая макрофункция для проверки условия и остановки тестов при ошибке. */
 #define CHECK(cond)                                                      \
     do {                                                                \
         if (!(cond)) {                                                  \
@@ -15,29 +15,26 @@
         }                                                               \
     } while (0)
 
-static void
-run_all_algorithms(const dmst_graph_t *g, int root, const int *expected_parent,
-                   long expected_weight)
-{
+static void run_all_algorithms(const dmst_graph_t *g, int root, const int *expected_parent, long expected_weight) {
     int n = g->n;
     int *parent = (int *)malloc((size_t)n * sizeof(int));
     long w;
     int rc;
-    /* Naive version */
+    /* Наивная версия */
     rc = dmst_naive(g, root, parent, &w);
     CHECK(rc == 0);
     CHECK(w == expected_weight);
     for (int i = 0; i < n; ++i) {
         CHECK(parent[i] == expected_parent[i]);
     }
-    /* Tarjan version */
+    /* Версия Tarjan */
     rc = dmst_tarjan(g, root, parent, &w);
     CHECK(rc == 0);
     CHECK(w == expected_weight);
     for (int i = 0; i < n; ++i) {
         CHECK(parent[i] == expected_parent[i]);
     }
-    /* Gabow version */
+    /* Версия Gabow */
     rc = dmst_gabow(g, root, parent, &w);
     CHECK(rc == 0);
     CHECK(w == expected_weight);
@@ -49,9 +46,7 @@ run_all_algorithms(const dmst_graph_t *g, int root, const int *expected_parent,
 
 /* Test a graph with a single vertex and no edges.  The weight should
  * be zero and the parent array should contain only -1. */
-static void
-test_single_vertex(void)
-{
+static void test_single_vertex() {
     dmst_graph_t g;
     g.n = 1;
     g.m = 0;
@@ -62,9 +57,7 @@ test_single_vertex(void)
 }
 
 /* Test a simple chain graph: 0 -> 1 with weight 5.  Root is 0. */
-static void
-test_simple_chain(void)
-{
+static void test_simple_chain() {
     dmst_graph_t g;
     g.n = 2;
     g.m = 1;
@@ -80,9 +73,7 @@ test_simple_chain(void)
 }
 
 /* Test a graph where the root cannot reach all vertices. */
-static void
-test_unreachable(void)
-{
+static void test_unreachable() {
     dmst_graph_t g;
     g.n = 3;
     g.m = 1;
@@ -102,9 +93,7 @@ test_unreachable(void)
 
 /* Test a simple cycle graph: 0->1, 1->2, 2->0.  The algorithm
  * should pick edges 0->1 and 1->2 when root is 0. */
-static void
-test_simple_cycle(void)
-{
+static void test_simple_cycle() {
     dmst_graph_t g;
     g.n = 3;
     g.m = 3;
@@ -122,9 +111,7 @@ test_simple_cycle(void)
 }
 
 /* Test a more complex graph with multiple edges and a clear optimum. */
-static void
-test_complex_graph(void)
-{
+static void test_complex_graph() {
     dmst_graph_t g;
     g.n = 4;
     g.m = 6;
@@ -145,9 +132,7 @@ test_complex_graph(void)
 
 /* Test graph with negative weights to ensure the algorithm handles
  * negative costs correctly. */
-static void
-test_negative_weights(void)
-{
+static void test_negative_weights() {
     dmst_graph_t g;
     g.n = 4;
     g.m = 5;
@@ -168,9 +153,7 @@ test_negative_weights(void)
 }
 
 /* Test graph with parallel edges between the same pair of vertices. */
-static void
-test_parallel_edges(void)
-{
+static void test_parallel_edges() {
     dmst_graph_t g;
     g.n = 3;
     g.m = 3;
@@ -185,9 +168,7 @@ test_parallel_edges(void)
     free(g.edges);
 }
 
-int
-main(void)
-{
+int main(){
     test_single_vertex();
     test_simple_chain();
     test_unreachable();
