@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdlib.h>
 
+/* Вставка узла x после узла a в двусвязный циклический список */
 static void list_insert_after(fib_node_t *a, fib_node_t *x)
 {
     x->left = a;
@@ -12,6 +13,7 @@ static void list_insert_after(fib_node_t *a, fib_node_t *x)
     a->right = x;
 }
 
+/* Удаление узла из двусвязного циклического списка */
 static void list_remove(fib_node_t *x)
 {
     x->left->right = x->right;
@@ -20,6 +22,10 @@ static void list_remove(fib_node_t *x)
     x->right = x;
 }
 
+/*
+ * Добавление узла в список корней Fibonacci heap.
+ * При необходимости обновляется минимум.
+ */
 static void root_insert(fib_heap_t *heap, fib_node_t *x)
 {
     x->parent = NULL;
@@ -37,6 +43,7 @@ static void root_insert(fib_heap_t *heap, fib_node_t *x)
     }
 }
 
+
 void fib_heap_init(fib_heap_t *heap)
 {
     heap->min = NULL;
@@ -44,6 +51,10 @@ void fib_heap_init(fib_heap_t *heap)
     heap->offset = 0;
 }
 
+/*
+ * Освобождение всех узлов кучи.
+ * Рекурсивно освобождает дочерние списки.
+ */
 static void free_list(fib_node_t *node)
 {
     if (!node) {
@@ -65,6 +76,7 @@ static void free_list(fib_node_t *node)
     } while (cur != start);
 }
 
+/* Полное освобождение памяти кучи */
 void fib_heap_free(fib_heap_t *heap)
 {
     if (!heap) {
@@ -77,7 +89,13 @@ void fib_heap_free(fib_heap_t *heap)
     heap->n = 0;
     heap->offset = 0;
 }
-
+/*
+ * Вставка нового узла в кучу.
+ * Ключ сохраняется с учётом lazy offset.
+ *
+ * Возвращает указатель на созданный узел
+ * или NULL при ошибке выделения памяти.
+ */
 fib_node_t *fib_heap_insert(
     fib_heap_t *heap,
     long key,
@@ -116,6 +134,11 @@ fib_node_t *fib_heap_min(fib_heap_t *heap)
     return heap->min;
 }
 
+/*
+ * Делает узел y дочерним для x.
+ * Используется при объединении деревьев
+ * одинаковой степени.
+ */
 static void fib_link(fib_heap_t *heap, fib_node_t *y, fib_node_t *x)
 {
     (void)heap;
@@ -136,6 +159,11 @@ static void fib_link(fib_heap_t *heap, fib_node_t *y, fib_node_t *x)
     x->degree++;
 }
 
+/*
+ * Оценка верхней границы степени дерева.
+ * Используется для размера вспомогательного
+ * массива при консолидации.
+ */
 static int degree_bound(int n)
 {
     int d = 0;
@@ -148,6 +176,11 @@ static int degree_bound(int n)
     return d * 3 + 10;
 }
 
+/*
+ * Консолидация корневого списка:
+ * деревья одинаковой степени объединяются,
+ * чтобы восстановить свойства Fibonacci heap.
+ */
 static void consolidate(fib_heap_t *heap)
 {
     if (!heap->min) {
@@ -223,6 +256,12 @@ static void consolidate(fib_heap_t *heap)
     free(a);
 }
 
+/*
+ * Извлечение минимального элемента.
+ * Дочерние узлы минимума переносятся
+ * в корневой список, после чего
+ * выполняется консолидация.
+ */
 fib_node_t *fib_heap_extract_min(fib_heap_t *heap)
 {
     fib_node_t *z = heap->min;
@@ -273,6 +312,10 @@ fib_node_t *fib_heap_extract_min(fib_heap_t *heap)
     return z;
 }
 
+/*
+ * Отделение узла x от родителя y
+ * и перенос в корневой список.
+ */
 static void cut(fib_heap_t *heap, fib_node_t *x, fib_node_t *y)
 {
     if (x->right == x) {
@@ -295,6 +338,11 @@ static void cut(fib_heap_t *heap, fib_node_t *x, fib_node_t *y)
     root_insert(heap, x);
 }
 
+/*
+ * Каскадное отделение узлов.
+ * Если родитель уже был помечен,
+ * операция рекурсивно продолжается вверх.
+ */
 static void cascading_cut(fib_heap_t *heap, fib_node_t *y)
 {
     fib_node_t *z = y->parent;
@@ -309,6 +357,11 @@ static void cascading_cut(fib_heap_t *heap, fib_node_t *y)
     }
 }
 
+/*
+ * Уменьшение ключа узла.
+ * При нарушении heap-свойства
+ * выполняются cut и cascading cut.
+ */
 void fib_heap_decrease_key(
     fib_heap_t *heap,
     fib_node_t *x,
@@ -334,6 +387,11 @@ void fib_heap_decrease_key(
     }
 }
 
+/*
+ * Слияние двух Fibonacci heap.
+ * Поддерживается корректная работа
+ * lazy offsets.
+ */
 void fib_heap_meld(
     fib_heap_t *dst,
     fib_heap_t *src
@@ -391,6 +449,11 @@ void fib_heap_meld(
     src->offset = 0;
 }
 
+/*
+ * Ленивое изменение ключей:
+ * смещение применяется ко всей куче
+ * без пересчёта каждого узла.
+ */
 void fib_heap_add_offset(
     fib_heap_t *heap,
     long delta
