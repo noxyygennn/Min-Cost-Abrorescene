@@ -1,121 +1,392 @@
-# Project architecture
 
-This document describes the overall structure of the directed minimum
-spanning tree (DMST) implementation.  The primary goal of the design
-is to balance correctness, readability and ease of testing while
-remaining faithful to the specification.  Future optimisations can
-build on this foundation without breaking the public API.
-
-## Directory structure
-
-```
+ Архитектура проекта
+Этот документ описывает архитектуру проекта для поиска минимального по стоимости ориентированного остовного дерева — Directed Minimum Spanning Tree, или DMST. В терминах теории графов результатом работы алгоритма является минимальная ориентированная арборесценция с заданным корнем.
+Цель проекта — реализовать и сравнить несколько алгоритмов поиска минимального ориентированного остовного дерева:
+- `dmst_naive` — учебная реализация алгоритма Чу–Лю/Эдмондса;
+- `dmst_tarjan` — эффективная реализация в стиле Тарьяна / Camerini;
+- `dmst_gabow` — реализация в стиле Gabow–Galil–Spencer–Tarjan с использованием Fibonacci heap, DSU и ленивых поправок весов.
+Все реализации используют одинаковый публичный API и проверяются одним набором тестов.
+## Структура каталогов
+```text
 dmst/
 │
 ├── include/
-│   └── dmst.h      – public API definitions
+│   ├── dmst.h          – определения публичного API
+│   ├── reachability.h  – интерфейс проверки достижимости
+│   ├── dsu.h           – интерфейс структуры непересекающихся множеств
+│   └── fib_heap.h      – интерфейс Fibonacci heap
 │
 ├── src/
-│   ├── naive.c     – naive Chu–Liu/Edmonds implementation
-│   ├── tarjan.c    – wrapper for Tarjan’s algorithm (calls naive)
-│   ├── gabow.c     – wrapper for Gabow–Galil–Spencer–Tarjan algorithm
-│   └── main.c      – optional CLI tool for manual experimentation
+│   ├── naive.c         – учебная реализация Chu-Liu/Edmonds
+│   ├── tarjan.c        – реализация в стиле Tarjan/Camerini
+│   ├── gabow.c         – реализация в стиле Gabow-Galil-Spencer-Tarjan
+│   ├── reachability.c  – BFS-проверка достижимости из корня
+│   ├── dsu.c           – реализация union-find
+│   ├── fib_heap.c      – реализация Fibonacci heap
+│   └── main.c          – необязательная консольная программа
 │
 ├── tests/
-│   └── test.c      – unit tests exercising all code paths
+│   └── test.c          – модульные тесты для всех публичных реализаций
 │
 ├── docs/
-│   └── architecture.md – this document
+│   └── architecture.md – этот документ
 │
-└── README.md       – high‑level overview and build instructions
+├── .github/
+│   └── workflows/
+│       └── ci.yml      – конфигурация GitHub Actions
+│
+├── Makefile            – правила сборки и запуска тестов
+└── README.md           – общий обзор проекта и инструкция по использованию
 ```
+Публичный API
 
-## Key modules
+Публичный API описан в файле include/dmst.h.
 
-### `dmst.h`
+dmst_edge_t
 
-Defines the core data structures and function prototypes used by all
-implementations:
+Структура dmst_edge_t описывает ориентированное взвешенное ребро:
 
-* `dmst_edge_t` – represents a directed edge with a tail `src`, head
-  `dst`, weight `weight` and internal identifier `id` used during
-  contractions.
-* `dmst_graph_t` – holds an array of edges together with the number
-  of vertices and edges.  Vertices are numbered 0..`n`‑1.
-* `dmst_naive`, `dmst_tarjan` and `dmst_gabow` – public entry points
-  for computing a minimum cost oriented spanning tree.  Each function
-  accepts a graph, a root index, a buffer to write the parent array
-  and a pointer to write the total weight.  On failure the function
-  returns a negative value.
+typedef struct {
+    int src;
+    int dst;
+    long weight;
+    int id;
+} dmst_edge_t;
 
-### `src/naive.c`
+Поля структуры:
 
-Implements the Chu–Liu/Edmonds algorithm in a straightforward but
-carefully structured manner.  The algorithm operates on a *reversed*
-view of the original graph so that selecting minimal incoming edges
-corresponds to building a tree where every vertex can reach the root.
-Reachability from the root is checked up front via a breadth‑first
-search.  Cycle detection, contraction and recursion follow the
-standard textbook description【471028505933921†L193-L244】.  The implementation also reconstructs
-the actual set of edges forming the arborescence by keeping track of
-the original edge identifiers during contractions.
+* src — вершина-источник;
+* dst — вершина-приёмник;
+* weight — вес ребра;
+* id — внутренний идентификатор ребра, который используется алгоритмами для отслеживания исходных рёбер при сжатии циклов.
 
-### `src/tarjan.c` and `src/gabow.c`
+dmst_graph_t
 
-Provide the same function signatures as `dmst_naive` but currently
-forward to the naive implementation.  These files serve as
-placeholders for future optimised versions and encapsulate the
-algorithm selection behind a stable API.  Clients are free to call
-`dmst_tarjan` or `dmst_gabow` without having to know how the result is
-produced.
+Структура dmst_graph_t описывает ориентированный взвешенный граф:
 
-### `src/main.c`
+typedef struct {
+    int n;
+    int m;
+    dmst_edge_t *edges;
+} dmst_graph_t;
 
-An optional command‑line driver that allows manual testing and
-exploration of the algorithms.  The program reads a graph from
-standard input and prints the weight and edges of the resulting
-arborescence.  The first argument selects the algorithm to use
-(`naive`, `tarjan` or `gabow`), defaulting to the Gabow entry point.
+Поля структуры:
 
-### `tests/test.c`
+* n — количество вершин;
+* m — количество рёбер;
+* edges — массив рёбер, памятью которого управляет вызывающий код.
 
-Implements a simple unit test framework without external dependencies.
-Each test constructs a small graph, calls all three algorithms and
-verifies that the resulting parent array and total weight match the
-expected values.  Negative scenarios (e.g. unreachable vertices) are
-also tested.  The tests achieve close to 100 % code coverage by
-touching the main branches and error paths.
+Вершины нумеруются от 0 до n - 1.
 
-## Data structures and memory management
+Публичные функции алгоритмов
 
-The central data structure used by the naive solver is the graph
-itself.  During contractions the algorithm allocates a new array of
-edges to represent the contracted graph.  Each edge stores the
-original index of the corresponding edge in the top‑level graph so
-that once recursion returns the solution can be expanded back to the
-original vertex set.  Temporary arrays for storing predecessors,
-cycle identifiers and visitation flags are allocated on each
-recursive call and freed before returning.  The API assumes the
-caller manages the lifetime of the input graph and the parent buffer.
+Проект предоставляет три публичные функции:
 
-## Style and conventions
+int dmst_naive(
+    const dmst_graph_t *g,
+    int root,
+    int *parent_out,
+    long *weight_out
+);
+int dmst_tarjan(
+    const dmst_graph_t *g,
+    int root,
+    int *parent_out,
+    long *weight_out
+);
+int dmst_gabow(
+    const dmst_graph_t *g,
+    int root,
+    int *parent_out,
+    long *weight_out
+);
 
-* The code follows a consistent naming scheme and is formatted in a
-  readable style.  Comments explain key steps of the algorithm.
-* All public functions validate their arguments and return an error
-  code on failure rather than exiting the program.
-* Pointer and buffer lengths are explicit in the API to avoid
-  overruns.
-* Memory allocations are checked for failure.  If any allocation
-  fails, the function cleans up intermediate resources and returns
-  immediately with an error.
+Каждая функция принимает:
 
-## Extensibility
+* граф;
+* индекс корневой вершины;
+* массив parent_out для записи родителей вершин;
+* указатель weight_out для записи итогового веса дерева.
 
-The separation between interface and implementation means that
-optimised versions of the algorithm can be substituted at any time.
-In particular, a future `dmst_tarjan` may employ a priority queue for
-incoming edges and a union–find structure to manage contractions, as
-described in the literature.  Similarly, a true Gabow–Galil–Spencer–
-Tarjan implementation may be plugged in to `dmst_gabow` without
-changing the rest of the codebase.  The test suite will remain valid
-and serve to verify correctness across implementations.
+При успешном выполнении функция возвращает 0, записывает суммарную стоимость арборесценции в weight_out и заполняет массив parent_out:
+
+parent_out[v] = родитель вершины v
+parent_out[root] = -1
+
+Если построить арборесценцию невозможно или входные данные некорректны, функция возвращает отрицательное значение.
+
+Проверка достижимости
+
+Обязательная предварительная проверка графа реализована в файле src/reachability.c.
+
+Функция:
+
+int dmst_check_reachable(const dmst_graph_t *g, int root);
+
+запускает поиск в ширину из корневой вершины и проверяет, достижимы ли все вершины графа из root.
+
+Если хотя бы одна вершина недостижима, ориентированное остовное дерево с данным корнем построить невозможно, поэтому алгоритм возвращает ошибку.
+
+Эта проверка выполняется в начале каждой публичной реализации.
+
+Учебная реализация: src/naive.c
+
+Файл src/naive.c содержит учебную реализацию алгоритма Чу–Лю/Эдмондса.
+
+Основные шаги алгоритма:
+
+1. Проверяются входные аргументы.
+2. Отдельно обрабатывается частный случай графа из одной вершины.
+3. Проверяется достижимость всех вершин из корня.
+4. Для каждой вершины, кроме корня, выбирается минимальное входящее ребро.
+5. Среди выбранных рёбер ищутся циклы.
+6. Если циклов нет, выбранные рёбра образуют ответ.
+7. Если цикл найден, он сжимается в одну вершину.
+8. Веса рёбер, входящих в сжатый цикл, корректируются по формуле:
+
+new_weight = old_weight - selected_incoming_weight[vertex]
+
+9. Задача рекурсивно решается на сжатом графе.
+10. После возврата из рекурсии сжатые циклы разворачиваются обратно.
+11. Итоговый набор рёбер переводится в массив parent_out, а также вычисляется общий вес дерева.
+
+Эта реализация используется как понятная учебная версия и как базовая проверка корректности для более эффективных алгоритмов.
+
+Реализация Tarjan/Camerini: src/tarjan.c
+
+Файл src/tarjan.c содержит отдельную реализацию алгоритма поиска минимальной арборесценции в стиле Тарьяна / Camerini.
+
+Эта функция не вызывает dmst_naive.
+
+В реализации используются Fibonacci heaps для более эффективного выбора минимальных входящих рёбер.
+
+Общая схема работы:
+
+1. Для каждой вершины строится Fibonacci heap входящих рёбер.
+2. Для каждой вершины, кроме корня, извлекается минимальное входящее ребро.
+3. По выбранным рёбрам строится структура предков.
+4. В этой структуре ищутся циклы.
+5. Если циклов нет, выбранный набор рёбер является ответом.
+6. Если циклы есть, они сжимаются в новые вершины.
+7. При сжатии корректируются веса входящих рёбер.
+8. Задача рекурсивно решается на сжатом графе.
+9. После возврата из рекурсии выбранные рёбра разворачиваются к исходным вершинам.
+
+Эта реализация сохраняет логику оптимального ветвления, но использует очереди с приоритетами для ускорения выбора минимальных входящих рёбер.
+
+Реализация Gabow-Galil-Spencer-Tarjan: src/gabow.c
+
+Файл src/gabow.c содержит отдельную реализацию в стиле Gabow–Galil–Spencer–Tarjan.
+
+Эта функция не вызывает ни dmst_tarjan, ни dmst_naive.
+
+В реализации используются:
+
+* Fibonacci heaps для эффективного извлечения минимальных рёбер;
+* DSU, или union-find, для управления компонентами;
+* ленивые поправки весов при сжатии циклов;
+* рекурсивное сжатие и разворачивание циклов.
+
+Основные идеи реализации:
+
+1. Каждая вершина имеет собственную Fibonacci heap входящих рёбер.
+2. Минимальные входящие рёбра извлекаются из этих куч.
+3. DSU используется для отслеживания и объединения компонент.
+4. При обнаружении цикла его вершины объединяются в одну компоненту.
+5. Fibonacci heaps вершин цикла сливаются.
+6. Ленивые поправки позволяют корректировать веса без немедленного пересчёта всех ключей.
+7. После сжатия задача решается рекурсивно.
+8. Решение разворачивается обратно к исходным вершинам с помощью сохранённых идентификаторов рёбер.
+
+Раньше в проекте была цепочка вызовов:
+
+dmst_gabow -> dmst_tarjan -> dmst_naive
+
+Теперь эта цепочка устранена. dmst_gabow является отдельной публичной реализацией.
+
+Fibonacci heap
+
+Fibonacci heap реализована в файлах:
+
+include/fib_heap.h
+src/fib_heap.c
+
+Она поддерживает операции, необходимые эффективным реализациям DMST:
+
+* вставка элемента;
+* получение минимума;
+* извлечение минимума;
+* уменьшение ключа;
+* слияние куч;
+* ленивое изменение смещения ключей.
+
+Ленивое смещение особенно важно для алгоритмов со сжатием циклов. Вместо немедленного изменения ключа каждого ребра куча хранит общий offset, который логически применяется к значениям ключей.
+
+DSU / Union-Find
+
+Структура непересекающихся множеств реализована в файлах:
+
+include/dsu.h
+src/dsu.c
+
+Она поддерживает:
+
+* инициализацию;
+* поиск представителя множества с компрессией пути;
+* объединение по рангу;
+* освобождение памяти.
+
+DSU используется в реализации Gabow-style для управления компонентами, возникающими при сжатии циклов.
+
+Консольная программа
+
+Файл src/main.c содержит необязательную консольную программу для ручной проверки работы алгоритмов.
+
+Запуск:
+
+./dmst [naive|tarjan|gabow]
+
+Формат входных данных:
+
+n m root
+u1 v1 w1
+u2 v2 w2
+...
+um vm wm
+
+Пример запуска:
+
+printf "3 2 0\n0 1 5\n1 2 7\n" | ./dmst gabow
+
+Ожидаемый вывод:
+
+12
+0 -> 1
+1 -> 2
+
+Если алгоритм не указан, по умолчанию используется gabow.
+
+Тестирование
+
+Тесты находятся в файле:
+
+tests/test.c
+
+Набор тестов запускает все три публичные реализации:
+
+* dmst_naive;
+* dmst_tarjan;
+* dmst_gabow.
+
+Тестами покрываются следующие случаи:
+
+* граф из одной вершины;
+* простая цепочка;
+* недостижимая вершина;
+* простой ориентированный цикл;
+* более сложный граф с конкурирующими рёбрами;
+* отрицательные веса;
+* параллельные рёбра;
+* несколько циклов;
+* сжатие и разворачивание цикла;
+* плотный граф;
+* сравнение всех алгоритмов с базовой реализацией.
+
+В простых случаях тесты сравнивают весь массив parent_out. В более сложных графах, где может существовать несколько разных минимальных арборесценций одинаковой стоимости, тесты сравнивают итоговый вес дерева.
+
+Запуск тестов:
+
+make clean && make test
+
+Ожидаемый результат:
+
+Все тесты успешно пройдены.
+
+Система сборки
+
+Сборка управляется через Makefile.
+
+Основной список исходных файлов:
+
+SRC=src/naive.c \
+    src/tarjan.c \
+    src/gabow.c \
+    src/reachability.c \
+    src/dsu.c \
+    src/fib_heap.c
+
+Основные цели:
+
+make release
+make debug
+make test
+make clean
+
+При запуске тестов используются санитайзеры:
+
+-fsanitize=address,undefined
+
+Это помогает обнаруживать ошибки работы с памятью и неопределённое поведение.
+
+Непрерывная интеграция
+
+GitHub Actions настроен в файле:
+
+.github/workflows/ci.yml
+
+CI выполняет следующие действия:
+
+1. Загружает репозиторий.
+2. Устанавливает инструменты сборки.
+3. Запускает:
+
+make clean && make test
+
+Успешный запуск CI подтверждает, что проект собирается и проходит тесты в чистом Linux-окружении.
+
+Управление памятью
+
+Входной граф принадлежит вызывающему коду и не изменяется алгоритмами.
+
+Внутри реализаций создаются временные структуры:
+
+* массивы минимальных входящих весов;
+* массивы предков;
+* идентификаторы циклов;
+* флаги посещения;
+* массивы рёбер сжатого графа;
+* узлы Fibonacci heap;
+* массивы DSU.
+
+Все временные структуры освобождаются перед возвратом из функции.
+
+Если выделение памяти завершается ошибкой, функция освобождает уже выделенные ресурсы и возвращает код ошибки.
+
+Обработка ошибок
+
+Все публичные функции проверяют:
+
+* указатель на граф;
+* выходные указатели;
+* количество вершин;
+* количество рёбер;
+* корректность индекса корня;
+* наличие массива рёбер, если рёбра существуют;
+* достижимость всех вершин из корня.
+
+Если проверка не пройдена или арборесценцию невозможно построить, функция возвращает отрицательное значение.
+
+Расширяемость
+
+Публичный API отделён от деталей реализации. Это позволяет изменять внутренние алгоритмы без изменения клиентского кода.
+
+Возможные дальнейшие улучшения:
+
+* добавить benchmark для больших случайных графов;
+* измерять время работы каждой реализации;
+* добавить стресс-тесты со случайной генерацией графов;
+* расширить тесты для более сложных вложенных циклов;
+* добавить подробный анализ асимптотики в документацию;
+* улучшить реализацию Fibonacci heap или заменить её на более оптимизированную версию.
+
+Текущая структура разделяет учебную реализацию, эффективную реализацию Tarjan/Camerini и реализацию Gabow–Galil–Spencer–Tarjan. Это делает проект удобным для проверки корректности, сравнения подходов и дальнейшей оптимизации
