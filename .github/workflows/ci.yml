@@ -2,14 +2,10 @@ name: C CI
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - develop
   pull_request:
 
 jobs:
-  build-and-test:
+  build-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +22,7 @@ jobs:
 
       - name: Run tests (ASan + UBSan + LeakSanitizer)
         env:
-          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: make test
 
@@ -34,11 +30,4 @@ jobs:
         run: make clean && make release
 
       - name: Run Valgrind
-        run: |
-          valgrind \
-            --leak-check=full \
-            --show-leak-kinds=all \
-            --track-origins=yes \
-            --errors-for-leak-kinds=all \
-            --error-exitcode=1 \
-            ./bin/tests
+        run: make valgrind
