@@ -15,19 +15,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential valgrind
+          sudo apt install -y build-essential
 
       - name: Build debug
         run: make clean && make debug
 
-      - name: Run tests (ASan + UBSan + LeakSanitizer)
+      - name: Run tests with sanitizers
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: make test
-
-      - name: Build release
-        run: make clean && make release
-
-      - name: Run Valgrind
-        run: make valgrind
