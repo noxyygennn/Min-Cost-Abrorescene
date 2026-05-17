@@ -1,361 +1,445 @@
 #include "dmst.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
 #include "reachability.h"
 
-/* Рекурсивный поиск ориентированного минимального
- * остовного дерева на обращённом графе.
+#include <limits.h>
+#include <stdlib.h>
+
+/*
+ * Учебная реализация алгоритма Chu-Liu/Edmonds.
  *
- * Для каждой вершины выбирается минимальное
- * входящее ребро, после чего найденные циклы
- * сворачиваются.
+ * Алгоритм строит минимальную ориентированную арборесценцию
+ * из заданного корня root.
  *
- * selected хранит индексы выбранных рёбер
- * исходного графа.
+ * parent_out[v] = родитель вершины v
+ * parent_out[root] = -1
  */
-static long dmst_recursive(const dmst_graph_t *graph, int root, int *selected, int *selected_cnt) {
-  int n = graph->n;
-  int m = graph->m;
-  const dmst_edge_t *edges = graph->edges;
 
-  /* Временные массивы */
-  long *in = (long *)malloc((size_t)n * sizeof(long));
-  int *pre = (int *)malloc((size_t)n * sizeof(int));
-  int *edgeIdx = (int *)malloc((size_t)n * sizeof(int));
-  int *id = (int *)malloc((size_t)n * sizeof(int));
-  int *vis = (int *)malloc((size_t)n * sizeof(int));
+typedef struct {
+    int src;
+    int dst;
+    long weight;
 
-  if (!in || !pre || !edgeIdx || !id || !vis) {
-    free(in);
-    free(pre);
-    free(edgeIdx);
-    free(id);
-    free(vis);
-    return -1;
-  }
+    /*
+     * Индекс ребра в исходном графе.
+     * Нужен для восстановления ответа после сжатия циклов.
+     */
+    int orig;
 
-  /* Ищем минимальное входящее ребро для каждой вершины */
-  for (int i = 0; i < n; ++i) {
-    in[i] = LONG_MAX;
-    pre[i] = -1;
-    edgeIdx[i] = -1;
-  }
+    /*
+     * Вершина текущего графа, в которую входит ребро.
+     * Нужна при разворачивании сжатого цикла.
+     */
+    int enter;
+} naive_edge_t;
 
-  for (int i = 0; i < m; ++i) {
-    int u = edges[i].src;
-    int v = edges[i].dst;
-    long w = edges[i].weight;
+typedef struct {
+    int n;
+    int m;
+    naive_edge_t *edges;
+} naive_graph_t;
 
-    /* Петли не учитываем */
-    if (u == v) {
-      continue;
+static int append_selected(
+    int *selected,
+    int *selected_count,
+    int value
+) {
+    if (value < 0) {
+        return -1;
     }
 
-    if (w < in[v] || (w == in[v] && u < pre[v])) {
-      in[v] = w;
-      pre[v] = u;
-      edgeIdx[v] = edges[i].id;
-    }
-  }
+    selected[*selected_count] = value;
+    ++(*selected_count);
 
-  /* У корня нет входящего ребра */
-  in[root] = 0;
-
-  /* Если у вершины нет входящего ребра,
-   * дерево построить нельзя */
-  for (int v = 0; v < n; ++v) {
-    if (v == root) continue;
-
-    if (in[v] == LONG_MAX) {
-      free(in);
-      free(pre);
-      free(edgeIdx);
-      free(id);
-      free(vis);
-      return -1;
-    }
-  }
-
-  /* Ищем циклы и считаем вес */
-  long total = 0;
-
-  for (int i = 0; i < n; ++i) {
-    total += (in[i] == LONG_MAX ? 0 : in[i]);
-    id[i] = -1;
-    vis[i] = -1;
-  }
-
-  int cycleNum = 0;
-
-  for (int i = 0; i < n; ++i) {
-    int v = i;
-
-    /* Идём по цепочке предков */
-    while (vis[v] != i &&
-           id[v] == -1 &&
-           v != root)
-    {
-      vis[v] = i;
-      v = pre[v];
-    }
-
-    /* Найден цикл */
-    if (v != root && id[v] == -1) {
-      for (int u = pre[v];
-           u != v;
-           u = pre[u])
-      {
-        id[u] = cycleNum;
-      }
-
-      id[v] = cycleNum;
-      cycleNum++;
-    }
-  }
-
-  /* Если циклов нет — решение найдено */
-  if (cycleNum == 0) {
-    for (int v = 0; v < n; ++v) {
-      if (v == root) {
-        continue;
-      }
-
-      selected[(*selected_cnt)++] =
-        edgeIdx[v];
-    }
-
-    free(in);
-    free(pre);
-    free(edgeIdx);
-    free(id);
-    free(vis);
-
-    return total;
-  }
-
-  /* Нумеруем вершины вне циклов */
-  int newCount = cycleNum;
-
-  for (int i = 0; i < n; ++i) {
-    if (id[i] == -1) {
-      id[i] = newCount++;
-    }
-  }
-
-  /* Строим граф после свёртки циклов */
-  dmst_edge_t *newEdges =
-    (dmst_edge_t *)malloc(
-      (size_t)m *
-      sizeof(dmst_edge_t)
-    );
-
-  if (!newEdges) {
-    free(in);
-    free(pre);
-    free(edgeIdx);
-    free(id);
-    free(vis);
-    return -1;
-  }
-
-  int newM = 0;
-
-  for (int i = 0; i < m; ++i) {
-    int u = edges[i].src;
-    int v = edges[i].dst;
-    long w = edges[i].weight;
-
-    int uId = id[u];
-    int vId = id[v];
-
-    if (uId != vId) {
-      long adjW = w;
-
-      if (in[v] != LONG_MAX) {
-        adjW = w - in[v];
-      }
-
-      newEdges[newM].src = uId;
-      newEdges[newM].dst = vId;
-      newEdges[newM].weight = adjW;
-      newEdges[newM].id = edges[i].id;
-
-      newM++;
-    }
-  }
-
-  dmst_graph_t contracted;
-  contracted.n = newCount;
-  contracted.m = newM;
-  contracted.edges = newEdges;
-
-  int *subSelected = (int *)malloc((size_t)(contracted.n > 0 ? contracted.n - 1 : 0) * sizeof(int));
-  int subCount = 0;
-
-  long subWeight = dmst_recursive(&contracted, id[root], subSelected, &subCount);
-
-  if (subWeight < 0) {
-    free(subSelected);
-    free(newEdges);
-    free(in);
-    free(pre);
-    free(edgeIdx);
-    free(id);
-    free(vis);
-    return -1;
-  }
-
-  total += subWeight;
-
-  /* Помечаем вершины,
-   * у которых нужно убрать ребро */
-  char *removed = (char *)calloc((size_t)n, sizeof(char));
-
-  if (!removed) {
-    free(subSelected);
-    free(newEdges);
-    free(in);
-    free(pre);
-    free(edgeIdx);
-    free(id);
-    free(vis);
-    return -1;
-  }
-
-  /* Добавляем рёбра
-   * из рекурсивной задачи */
-  for (int i = 0; i < subCount; ++i) {
-    int idx = subSelected[i];
-
-    if (idx < 0 || idx >= contracted.m) continue;
-
-    dmst_edge_t ne = contracted.edges[idx];
-
-    selected[(*selected_cnt)++] = ne.id;
-
-    if (ne.dst < cycleNum) {
-      int vOrig = graph->edges[ne.id].dst;
-      removed[vOrig] = 1;
-    }
-  }
-
-  /* Добавляем рёбра до свёртки */
-  for (int v = 0; v < n; ++v) {
-    if (v == root) {
-      continue;
-    }
-
-    if (id[v] < cycleNum) {
-      if (!removed[v]) {
-        selected[(*selected_cnt)++] = edgeIdx[v];
-      }
-    } else {
-      selected[(*selected_cnt)++] = edgeIdx[v];
-    }
-  }
-
-  free(removed);
-  free(subSelected);
-  free(newEdges);
-  free(in);
-  free(pre);
-  free(edgeIdx);
-  free(id);
-  free(vis);
-
-  return total;
+    return 0;
 }
 
-/* Основная функция алгоритма */
-int dmst_naive(const dmst_graph_t *g, int root, int *parent_out, long *weight_out) {
-  if (!g ||
-      g->n <= 0 ||
-      g->m < 0)
-  {
-    return -1;
-  }
-
-  if (root < 0 ||
-      root >= g->n)
-  {
-    return -1;
-  }
-
-  /* Проверяем достижимость */
-  if (!dmst_check_reachable(g, root)) {
-    return -1;
-  }
-
-  /* Строим обращённый граф */
-  dmst_edge_t *revEdges =
-    (dmst_edge_t *)malloc(
-      (size_t)g->m *
-      sizeof(dmst_edge_t)
-    );
-
-  if (!revEdges) {
-    return -1;
-  }
-
-  for (int i = 0; i < g->m; ++i) {
-    revEdges[i].src = g->edges[i].dst;
-    revEdges[i].dst = g->edges[i].src;
-    revEdges[i].weight = g->edges[i].weight;
-    revEdges[i].id = i;
-  }
-
-  dmst_graph_t rev;
-  rev.n = g->n;
-  rev.m = g->m;
-  rev.edges = revEdges;
-
-  int *selected = (int *)malloc(
-    (size_t)(
-      g->n > 0
-      ? g->n - 1
-      : 0
-    ) * sizeof(int)
-  );
-
-  if (!selected) {
-    free(revEdges);
-    return -1;
-  }
-
-  int selectedCount = 0;
-  long total = dmst_recursive(&rev, root, selected, &selectedCount);
-
-  if (total < 0 || selectedCount != g->n - 1) {
-    free(selected);
-    free(revEdges);
-    return -1;
-  }
-
-  /* Инициализируем parent */
-  for (int i = 0; i < g->n; ++i) {
-    parent_out[i] = -1;
-  }
-
-  /* Заполняем массив родителей */
-  for (int i = 0; i < selectedCount; ++i) {
-    int idx = selected[i];
-
-    if (idx < 0 || idx >= g->m) {
-      continue;
+static int find_edge_by_orig(
+    const naive_graph_t *g,
+    int orig
+) {
+    for (int i = 0; i < g->m; ++i) {
+        if (g->edges[i].orig == orig) {
+            return i;
+        }
     }
 
-    int u = g->edges[idx].src;
-    int v = g->edges[idx].dst;
-    parent_out[v] = u;
-  }
+    return -1;
+}
 
-  parent_out[root] = -1;
-  *weight_out = total;
+static int naive_recursive(
+    const naive_graph_t *g,
+    int root,
+    int *selected,
+    int *selected_count
+) {
+    long *in = NULL;
+    int *pre = NULL;
+    int *pre_orig = NULL;
+    int *id = NULL;
+    int *vis = NULL;
 
-  free(selected);
-  free(revEdges);
+    naive_edge_t *new_edges = NULL;
+    int *sub_selected = NULL;
+    char *removed = NULL;
 
-  return 0;
+    int cycle_count = 0;
+    int new_n = 0;
+    int new_m = 0;
+    int sub_count = 0;
+    int rc = -1;
+
+    in = (long *)malloc((size_t)g->n * sizeof(long));
+    pre = (int *)malloc((size_t)g->n * sizeof(int));
+    pre_orig = (int *)malloc((size_t)g->n * sizeof(int));
+    id = (int *)malloc((size_t)g->n * sizeof(int));
+    vis = (int *)malloc((size_t)g->n * sizeof(int));
+
+    if (!in || !pre || !pre_orig || !id || !vis) {
+        goto cleanup;
+    }
+
+    /*
+     * Шаг 1.
+     * Для каждой вершины выбираем минимальное входящее ребро.
+     */
+    for (int i = 0; i < g->n; ++i) {
+        in[i] = LONG_MAX;
+        pre[i] = -1;
+        pre_orig[i] = -1;
+        id[i] = -1;
+        vis[i] = -1;
+    }
+
+    for (int i = 0; i < g->m; ++i) {
+        int u = g->edges[i].src;
+        int v = g->edges[i].dst;
+        long w = g->edges[i].weight;
+
+        if (u == v) {
+            continue;
+        }
+
+        if (w < in[v]) {
+            in[v] = w;
+            pre[v] = u;
+            pre_orig[v] = g->edges[i].orig;
+        }
+    }
+
+    /*
+     * У корня входящего ребра быть не должно.
+     */
+    in[root] = 0;
+
+    /*
+     * Если у какой-то вершины, кроме root,
+     * нет входящего ребра, арборесценцию построить нельзя.
+     */
+    for (int v = 0; v < g->n; ++v) {
+        if (v != root && in[v] == LONG_MAX) {
+            goto cleanup;
+        }
+    }
+
+    /*
+     * Шаг 2.
+     * Ищем циклы среди выбранных минимальных входящих рёбер.
+     */
+    for (int i = 0; i < g->n; ++i) {
+        int v = i;
+
+        while (vis[v] != i && id[v] == -1 && v != root) {
+            vis[v] = i;
+            v = pre[v];
+        }
+
+        if (v != root && id[v] == -1) {
+            int u;
+
+            for (u = pre[v]; u != v; u = pre[u]) {
+                id[u] = cycle_count;
+            }
+
+            id[v] = cycle_count;
+            ++cycle_count;
+        }
+    }
+
+    /*
+     * Шаг 3.
+     * Если циклов нет, выбранные входящие рёбра уже дают ответ.
+     */
+    if (cycle_count == 0) {
+        for (int v = 0; v < g->n; ++v) {
+            if (v == root) {
+                continue;
+            }
+
+            if (append_selected(
+                    selected,
+                    selected_count,
+                    pre_orig[v]
+                ) < 0) {
+                goto cleanup;
+            }
+        }
+
+        rc = 0;
+        goto cleanup;
+    }
+
+    /*
+     * Шаг 4.
+     * Сжимаем каждый цикл в отдельную вершину.
+     */
+    new_n = cycle_count;
+
+    for (int v = 0; v < g->n; ++v) {
+        if (id[v] == -1) {
+            id[v] = new_n;
+            ++new_n;
+        }
+    }
+
+    new_edges = (naive_edge_t *)malloc(
+        (size_t)(g->m > 0 ? g->m : 1) * sizeof(naive_edge_t)
+    );
+
+    if (!new_edges) {
+        goto cleanup;
+    }
+
+    for (int i = 0; i < g->m; ++i) {
+        int u = g->edges[i].src;
+        int v = g->edges[i].dst;
+
+        int u_id = id[u];
+        int v_id = id[v];
+
+        if (u_id == v_id) {
+            continue;
+        }
+
+        /*
+         * Корректировка веса при сжатии:
+         * new_weight = old_weight - in[v]
+         */
+        new_edges[new_m].src = u_id;
+        new_edges[new_m].dst = v_id;
+        new_edges[new_m].weight = g->edges[i].weight - in[v];
+        new_edges[new_m].orig = g->edges[i].orig;
+        new_edges[new_m].enter = v;
+
+        ++new_m;
+    }
+
+    {
+        naive_graph_t contracted;
+
+        contracted.n = new_n;
+        contracted.m = new_m;
+        contracted.edges = new_edges;
+
+        sub_selected = (int *)malloc(
+            (size_t)(g->n > 1 ? g->n - 1 : 1) * sizeof(int)
+        );
+
+        if (!sub_selected) {
+            goto cleanup;
+        }
+
+        /*
+         * Шаг 5.
+         * Рекурсивно решаем задачу на сжатом графе.
+         */
+        if (naive_recursive(
+                &contracted,
+                id[root],
+                sub_selected,
+                &sub_count
+            ) < 0) {
+            goto cleanup;
+        }
+
+        removed = (char *)calloc((size_t)g->n, sizeof(char));
+        if (!removed) {
+            goto cleanup;
+        }
+
+        /*
+         * Шаг 6.
+         * Разворачиваем решение.
+         *
+         * Если ребро из сжатого графа входит в цикл,
+         * то внутри цикла надо удалить минимальное входящее ребро
+         * той вершины, куда вошло внешнее ребро.
+         */
+        for (int i = 0; i < sub_count; ++i) {
+            int orig = sub_selected[i];
+            int pos = find_edge_by_orig(&contracted, orig);
+
+            if (append_selected(
+                    selected,
+                    selected_count,
+                    orig
+                ) < 0) {
+                goto cleanup;
+            }
+
+            if (pos >= 0 &&
+                contracted.edges[pos].dst < cycle_count) {
+                removed[contracted.edges[pos].enter] = 1;
+            }
+        }
+
+        /*
+         * Добавляем внутренние рёбра циклов,
+         * кроме того, которое было удалено.
+         */
+        for (int v = 0; v < g->n; ++v) {
+            if (v == root) {
+                continue;
+            }
+
+            if (id[v] < cycle_count && !removed[v]) {
+                if (append_selected(
+                        selected,
+                        selected_count,
+                        pre_orig[v]
+                    ) < 0) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
+
+    rc = 0;
+
+cleanup:
+    free(removed);
+    free(sub_selected);
+    free(new_edges);
+
+    free(vis);
+    free(id);
+    free(pre_orig);
+    free(pre);
+    free(in);
+
+    return rc;
+}
+
+int dmst_naive(
+    const dmst_graph_t *g,
+    int root,
+    int *parent_out,
+    long *weight_out
+) {
+    naive_graph_t ng;
+    naive_edge_t *edges = NULL;
+    int *selected = NULL;
+    int selected_count = 0;
+    long total = 0;
+
+    if (!g || !parent_out || !weight_out) {
+        return -1;
+    }
+
+    if (g->n <= 0 || g->m < 0) {
+        return -1;
+    }
+
+    if (root < 0 || root >= g->n) {
+        return -1;
+    }
+
+    if (g->m > 0 && !g->edges) {
+        return -1;
+    }
+
+    /*
+     * Частный случай:
+     * граф из одной вершины не требует рёбер.
+     */
+    if (g->n == 1) {
+        parent_out[root] = -1;
+        *weight_out = 0;
+        return 0;
+    }
+
+    /*
+     * Обязательная проверка:
+     * все вершины должны быть достижимы из root.
+     */
+    if (!dmst_check_reachable(g, root)) {
+        return -1;
+    }
+
+    edges = (naive_edge_t *)malloc(
+        (size_t)(g->m > 0 ? g->m : 1) * sizeof(naive_edge_t)
+    );
+
+    selected = (int *)malloc(
+        (size_t)(g->n > 1 ? g->n - 1 : 1) * sizeof(int)
+    );
+
+    if (!edges || !selected) {
+        free(edges);
+        free(selected);
+        return -1;
+    }
+
+    for (int i = 0; i < g->m; ++i) {
+        edges[i].src = g->edges[i].src;
+        edges[i].dst = g->edges[i].dst;
+        edges[i].weight = g->edges[i].weight;
+        edges[i].orig = i;
+        edges[i].enter = g->edges[i].dst;
+    }
+
+    ng.n = g->n;
+    ng.m = g->m;
+    ng.edges = edges;
+
+    if (naive_recursive(
+            &ng,
+            root,
+            selected,
+            &selected_count
+        ) < 0) {
+        free(selected);
+        free(edges);
+        return -1;
+    }
+
+    if (selected_count != g->n - 1) {
+        free(selected);
+        free(edges);
+        return -1;
+    }
+
+    for (int i = 0; i < g->n; ++i) {
+        parent_out[i] = -1;
+    }
+
+    for (int i = 0; i < selected_count; ++i) {
+        int idx = selected[i];
+
+        if (idx < 0 || idx >= g->m) {
+            free(selected);
+            free(edges);
+            return -1;
+        }
+
+        parent_out[g->edges[idx].dst] = g->edges[idx].src;
+        total += g->edges[idx].weight;
+    }
+
+    parent_out[root] = -1;
+    *weight_out = total;
+
+    free(selected);
+    free(edges);
+
+    return 0;
 }
