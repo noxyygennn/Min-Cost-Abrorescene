@@ -503,7 +503,11 @@ int dmst_tarjan(
     if (g->m > 0 && !g->edges) {
         return -1;
     }
-
+    if (g->n == 1) {
+      parent_out[root] = -1;
+      *weight_out = 0;
+       return 0;
+}
     /*
      * Обязательная проверка из ТЗ:
      * из root должны быть достижимы все вершины.
