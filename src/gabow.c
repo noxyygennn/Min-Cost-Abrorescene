@@ -698,7 +698,11 @@ int dmst_gabow(
     if (g->m > 0 && !g->edges) {
         return -1;
     }
-
+    if (g->n == 1) {
+      parent_out[root] = -1;
+      *weight_out = 0;
+       return 0;
+}
     /*
      * Обязательная проверка по ТЗ:
      * все вершины должны быть достижимы из root.
