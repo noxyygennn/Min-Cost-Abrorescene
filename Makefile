@@ -10,7 +10,9 @@ INC=-Iinclude -Isrc
 SRC=src/naive.c \
 	src/tarjan.c \
 	src/gabow.c \
-	src/reachability.c
+	src/reachability.c \
+    src/dsu.c \
+    src/fib_heap.c
 
 COMMON=$(CSTD) $(WARN) $(DBG)
 
