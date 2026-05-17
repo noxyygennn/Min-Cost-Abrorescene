@@ -39,36 +39,39 @@ static void run_all_algorithms(
 
     CHECK(parent != NULL);
 
-    /*
-     * Проверяем наивную реализацию.
-     */
     rc = dmst_naive(g, root, parent, &w);
+    if (rc != 0) {
+        fprintf(stderr, "Ошибка: dmst_naive вернул %d, n=%d, m=%d, root=%d\n",
+                rc, g->n, g->m, root);
+        exit(EXIT_FAILURE);
+    }
 
-    CHECK(rc == 0);
     CHECK(w == expected_weight);
 
     for (int i = 0; i < n; ++i) {
         CHECK(parent[i] == expected_parent[i]);
     }
 
-    /*
-     * Проверяем реализацию Тарьяна.
-     */
     rc = dmst_tarjan(g, root, parent, &w);
+    if (rc != 0) {
+        fprintf(stderr, "Ошибка: dmst_tarjan вернул %d, n=%d, m=%d, root=%d\n",
+                rc, g->n, g->m, root);
+        exit(EXIT_FAILURE);
+    }
 
-    CHECK(rc == 0);
     CHECK(w == expected_weight);
 
     for (int i = 0; i < n; ++i) {
         CHECK(parent[i] == expected_parent[i]);
     }
 
-    /*
-     * Проверяем реализацию Габова.
-     */
     rc = dmst_gabow(g, root, parent, &w);
+    if (rc != 0) {
+        fprintf(stderr, "Ошибка: dmst_gabow вернул %d, n=%d, m=%d, root=%d\n",
+                rc, g->n, g->m, root);
+        exit(EXIT_FAILURE);
+    }
 
-    CHECK(rc == 0);
     CHECK(w == expected_weight);
 
     for (int i = 0; i < n; ++i) {
