@@ -2,6 +2,15 @@
 
 #include <stdlib.h>
 
+/*
+ * Инициализация структуры DSU (Disjoint Set Union).
+ * Создаёт n независимых множеств:
+ * parent[i] = i.
+ *
+ * Возвращает:
+ * 0  - успех
+ * -1 - ошибка выделения памяти или некорректные аргументы
+ */
 int dsu_init(dsu_t *dsu, int n)
 {
     if (!dsu || n <= 0) {
@@ -9,7 +18,11 @@ int dsu_init(dsu_t *dsu, int n)
     }
 
     dsu->n = n;
+
+    /* Массив родителей */
     dsu->parent = (int *)malloc((size_t)n * sizeof(int));
+
+    /* Ранги деревьев, изначально равны 0 */
     dsu->rank = (int *)calloc((size_t)n, sizeof(int));
 
     if (!dsu->parent || !dsu->rank) {
@@ -23,6 +36,7 @@ int dsu_init(dsu_t *dsu, int n)
         return -1;
     }
 
+    /* Изначально каждая вершина является своим представителем */
     for (int i = 0; i < n; ++i) {
         dsu->parent[i] = i;
     }
@@ -30,6 +44,9 @@ int dsu_init(dsu_t *dsu, int n)
     return 0;
 }
 
+/*
+ * Освобождение памяти, выделенной под DSU.
+ */
 void dsu_free(dsu_t *dsu)
 {
     if (!dsu) {
@@ -44,6 +61,11 @@ void dsu_free(dsu_t *dsu)
     dsu->n = 0;
 }
 
+/*
+ * Поиск представителя множества.
+ * Используется компрессия пути для ускорения
+ * последующих операций поиска.
+ */
 int dsu_find(dsu_t *dsu, int x)
 {
     if (dsu->parent[x] != x) {
@@ -53,6 +75,14 @@ int dsu_find(dsu_t *dsu, int x)
     return dsu->parent[x];
 }
 
+/*
+ * Объединение двух множеств.
+ * Используется union by rank:
+ * дерево меньшей высоты присоединяется
+ * к дереву большей высоты.
+ *
+ * Возвращает представителя нового множества.
+ */
 int dsu_union(dsu_t *dsu, int a, int b)
 {
     int ra = dsu_find(dsu, a);
@@ -62,6 +92,7 @@ int dsu_union(dsu_t *dsu, int a, int b)
         return ra;
     }
 
+    /* Прикрепляем менее глубокое дерево */
     if (dsu->rank[ra] < dsu->rank[rb]) {
         dsu->parent[ra] = rb;
         return rb;
@@ -72,6 +103,7 @@ int dsu_union(dsu_t *dsu, int a, int b)
         return ra;
     }
 
+    /* Если ранги равны — увеличиваем высоту нового корня */
     dsu->parent[rb] = ra;
     dsu->rank[ra]++;
 
