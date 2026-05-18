@@ -1,27 +1,50 @@
+# Название workflow в GitHub Actions
 name: C CI
 
+# Когда запускать CI
 on:
+  # Запускать при отправке изменений в репозиторий
   push:
+
+  # Запускать при создании или обновлении pull request
   pull_request:
 
+# Список задач workflow
 jobs:
+  # Название задачи: сборка и тестирование
   build-test:
+    # Виртуальная машина, на которой будет запускаться CI
     runs-on: ubuntu-latest
 
+    # Последовательность шагов
     steps:
+      # Шаг 1: скачать код репозитория в CI-окружение
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Шаг 2: установить зависимости для сборки C-проекта
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential
 
+      # Шаг 3: проверить, что проект собирается в debug-режиме
+      # make clean удаляет старые бинарники
+      # make debug собирает программу с отладочными флагами
       - name: Build debug
         run: make clean && make debug
 
+      # Шаг 4: запустить тесты с sanitizers
       - name: Run tests with sanitizers
         env:
+          # Настройки AddressSanitizer:
+          # detect_leaks=1 включает поиск утечек памяти
+          # abort_on_error=1 завершает программу при первой найденной ошибке
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+
+          # Настройки UndefinedBehaviorSanitizer:
+          # print_stacktrace=1 печатает стек вызовов при ошибке
           UBSAN_OPTIONS: print_stacktrace=1
+
+        # make test собирает tests_run и запускает тесты
         run: make test
