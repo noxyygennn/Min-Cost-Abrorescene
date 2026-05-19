@@ -62,7 +62,7 @@ make test
 Или вручную:
 
 ```bash
-gcc -std=c99 -Wall -Wextra -Iinclude src/*.c -o dmst
+gcc -std=c11 -Wall -Wextra -Iinclude src/*.c -o dmst
 ./dmst [naive|tarjan|gabow] < input.txt
 ```
 
